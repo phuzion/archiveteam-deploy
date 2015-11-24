@@ -1,0 +1,67 @@
+---
+- hosts: atgc
+  remote_user: root
+  vars:
+    project: googlecode-grab
+    numcon: 2  
+    atuser: archiveteam
+    atnick: phuzion
+
+  tasks:
+  - name: configure sudoers file
+    lineinfile: "dest=/etc/sudoers state=present regexp='^%wheel' line='%wheel ALL=(ALL) NOPASSWD: ALL' validate='visudo -cf %s'"
+
+  - name: install repoforge el6
+    yum: name=http://pkgs.repoforge.org/rpmforge-release/rpmforge-release-0.5.3-1.el6.rf.x86_64.rpm state=installed
+
+  - name: ensure systems are up to date
+    yum: name=* state=latest
+
+  - name: install AT prereq packages
+    yum: pkg={{item}} state=installed
+    with_items:
+     - gnutls-devel
+     - lua-devel
+     - zlib-devel
+     - python-setuptools
+     - git-core
+     - vim-enhanced
+     - tmux
+     - htop
+     - screen
+
+  - name: install Development Tools group
+    yum: name="@Development Tools" state=present
+
+  - name: install pip via easy_install
+    easy_install: name=pip
+
+  - name: install pip packages
+    pip: name={{item}}
+    with_items:
+      - requests
+      - argparse
+      - seesaw
+
+  - name: create users
+    user: name={{atuser}} group=wheel
+
+  - name: deploy pipeline scripts
+    git: repo=https://github.com/ArchiveTeam/{{project}}.git dest=/home/{{atuser}}/{{project}}
+    become: yes
+    become_user: "{{atuser}}"
+
+  - name: build archiveteam wget-lua
+    command: sh /home/{{atuser}}/{{project}}/get-wget-lua.sh
+    args:
+      chdir: /home/{{atuser}}/{{project}}/
+      creates: /home/{{atuser}}/{{project}}/wget-lua
+    become: yes
+    become_user: "{{atuser}}"
+
+  - name: start pipeline
+    command: screen -dm run-pipeline pipeline.py {{atnick}} --concurrent {{numcon}} --disable-web-server
+    args:
+      chdir: /home/{{atuser}}/{{project}}/
+    become: yes
+    become_user: "{{atuser}}"
